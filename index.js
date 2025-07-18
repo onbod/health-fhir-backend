@@ -131,11 +131,11 @@ app.post('/login/request-otp', async (req, res) => {
     return res.status(404).json(operationOutcome('error', 'not-found', 'User not found'));
   }
   // Generate OTP
-  const otp = Math.floor(100000 + Math.random() * 900000).toString();
+  const otp = '123456'; // <-- STATIC OTP FOR TESTING, REMOVE IN PRODUCTION
   let otpKey = phone || (given && family && client_number ? `${given}:${family}:${client_number}` : nin_number);
   otpStore.set(otpKey, { otp, expires: Date.now() + 5 * 60 * 1000 });
   console.log(`OTP for ${otpKey}: ${otp}`); // Replace with SMS in production
-  res.json({ message: 'OTP sent' });
+  res.json({ message: 'OTP sent', otp }); // <-- REMOVE 'otp' IN PRODUCTION
 });
 
 // OTP verify endpoint
@@ -165,6 +165,10 @@ app.post('/login/verify-otp', async (req, res) => {
   } else {
     return res.status(400).json({ error: 'Missing identifier' });
   }
+  console.log('VERIFY OTP KEY:', key);
+  console.log('ALL OTP KEYS:', Array.from(otpStore.keys()));
+  console.log('OTP ENTRY:', otpStore.get(key));
+  console.log('REQUEST BODY:', req.body);
   const otpEntry = otpStore.get(key);
   if (!otpEntry || otpEntry.otp !== otp || otpEntry.expires < Date.now()) {
     return res.status(401).json({ error: 'Invalid or expired OTP' });
@@ -630,16 +634,16 @@ app.get('/admin/patient/:id/full', authenticateToken, async (req, res) => {
   if (req.user.role !== 'admin') {
     return res.status(403).json({ error: 'Admin access required' });
   }
-  const clientNumber = req.params.id;
+  const patientId = req.params.id;
 
   // Get patient info
-  const patientResult = await pool.query('SELECT * FROM patient WHERE client_number = $1', [clientNumber]);
+  const patientResult = await pool.query('SELECT * FROM patient WHERE id = $1', [patientId]);
   if (patientResult.rows.length === 0) return res.status(404).json({ error: 'User not found' });
   const patient = patientResult.rows[0];
 
   // Get current pregnancy (latest by edd)
   const pregnancyResult = await pool.query(
-    'SELECT * FROM pregnancy WHERE patient_id = $1 ORDER BY edd DESC LIMIT 1', [patient.id]
+    'SELECT * FROM pregnancy WHERE patient_id = $1 ORDER BY edd DESC LIMIT 1', [patientId]
   );
   const pregnancy = pregnancyResult.rows[0] || null;
 
@@ -647,7 +651,7 @@ app.get('/admin/patient/:id/full', authenticateToken, async (req, res) => {
   let ancVisits = [];
   if (pregnancy) {
     const ancResult = await pool.query(
-      'SELECT * FROM anc_visit WHERE patient_id = $1 ORDER BY visit_number ASC', [patient.id]
+      'SELECT * FROM anc_visit WHERE patient_id = $1 ORDER BY visit_number ASC', [patientId]
     );
     ancVisits = ancResult.rows;
   }
