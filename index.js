@@ -31,7 +31,7 @@ app.use((req, res, next) => {
 // ✅ PostgreSQL connection (works locally + Railway)
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : false
+  ssl: { rejectUnauthorized: false } // Needed for Railway SSL
 });
 
 // ✅ Quick Health Check
@@ -338,7 +338,7 @@ app.post('/report', async (req, res) => {
   }
 });
 
-app.get('/indicators/anc', authenticateToken, async (req, res) => {
+app.get('/indicators/anc', async (req, res) => {
   const result = await pool.query(`
     SELECT 
       COUNT(*) FILTER (WHERE visit_number = 1) AS first_visit,
@@ -365,11 +365,9 @@ app.get('/indicators/anc', authenticateToken, async (req, res) => {
 
 // 2. FHIR catch-all (must come after!)
 app.use('/:resourceType', (req, res, next) => {
-  // Allow login endpoints without auth
-  if (['login', 'login/request-otp', 'login/verify-otp', 'admin/login'].includes(req.params.resourceType)) return next();
-  authenticateToken(req, res, next);
+  next(); // No authentication required for any resourceType
 });
-app.get('/fhir/:resourceType', authenticateToken, async (req, res) => {
+app.get('/fhir/:resourceType', async (req, res) => {
   const { resourceType } = req.params;
   const queryParams = req.query;
 
@@ -492,7 +490,7 @@ app.delete('/:resourceType/:id', async (req, res) => {
 });
 
 // Get user session/profile endpoint
-app.get('/user/session', authenticateToken, async (req, res) => {
+app.get('/user/session', async (req, res) => {
   const userId = req.user.id;
   console.log('DEBUG: /user/session userId:', userId);
 
@@ -564,7 +562,7 @@ app.get('/user/session', authenticateToken, async (req, res) => {
 });
 
 // Get all messages for a chat
-app.get('/chat/:chatId/messages', authenticateToken, async (req, res) => {
+app.get('/chat/:chatId/messages', async (req, res) => {
   const { chatId } = req.params;
   const result = await pool.query(
     'SELECT * FROM chat_message WHERE chat_id = $1 ORDER BY timestamp ASC',
@@ -574,7 +572,7 @@ app.get('/chat/:chatId/messages', authenticateToken, async (req, res) => {
 });
 
 // Send a new message
-app.post('/chat/:chatId/messages', authenticateToken, async (req, res) => {
+app.post('/chat/:chatId/messages', async (req, res) => {
   const { chatId } = req.params;
   const {
     sender_id,
@@ -604,7 +602,7 @@ app.get('/test-patients', async (req, res) => {
   res.json(result.rows);
 });
 
-app.get('/admin/patient/:id/full', authenticateToken, async (req, res) => {
+app.get('/admin/patient/:id/full', async (req, res) => {
   if (req.user.role !== 'admin') {
     return res.status(403).json({ error: 'Admin access required' });
   }
