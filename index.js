@@ -363,6 +363,100 @@ app.get('/indicators/anc', async (req, res) => {
   res.json(metrics);
 });
 
+// Get user session/profile endpoint (MUST come before catch-all routes)
+app.get('/user/session', async (req, res) => {
+  console.log('DEBUG: /user/session - Starting endpoint');
+  
+  // Extract user ID from JWT token in Authorization header
+  const authHeader = req.headers['authorization'];
+  console.log('DEBUG: /user/session - authHeader:', authHeader);
+  
+  const token = authHeader && authHeader.split(' ')[1];
+  console.log('DEBUG: /user/session - token:', token ? 'present' : 'missing');
+  
+  if (!token) {
+    console.log('DEBUG: /user/session - No token provided');
+    return res.status(401).json({ error: 'No token provided' });
+  }
+
+  try {
+    const decoded = jwt.verify(token, SECRET_KEY);
+    const userId = decoded.id;
+    console.log('DEBUG: /user/session userId:', userId);
+    console.log('DEBUG: /user/session decoded token:', decoded);
+
+    // Get patient info
+    const patientResult = await pool.query('SELECT * FROM patient WHERE id = $1', [userId]);
+    console.log('DEBUG: /user/session patientResult:', patientResult.rows);
+    console.log('DEBUG: /user/session patientResult.rowCount:', patientResult.rowCount);
+
+    if (patientResult.rows.length === 0) return res.status(404).json({ error: 'User not found' });
+    const patient = patientResult.rows[0];
+
+    // Get current pregnancy (latest by edd)
+    const pregnancyResult = await pool.query(
+      'SELECT * FROM pregnancy WHERE patient_id = $1 ORDER BY edd DESC LIMIT 1', [userId]
+    );
+    const pregnancy = pregnancyResult.rows[0] || null;
+    console.log('DEBUG: /user/session pregnancy:', pregnancy);
+
+    // Get all ANC visits for this patient (for the current pregnancy)
+    let ancVisits = [];
+    if (pregnancy) {
+      const ancResult = await pool.query(
+        'SELECT * FROM anc_visit WHERE patient_id = $1 ORDER BY visit_number ASC', [userId]
+      );
+      ancVisits = ancResult.rows;
+    }
+    console.log('DEBUG: /user/session ancVisits:', ancVisits);
+
+    // Get delivery info for this pregnancy
+    let delivery = null;
+    if (pregnancy) {
+      const deliveryResult = await pool.query(
+        'SELECT * FROM delivery WHERE pregnancy_id = $1', [pregnancy.id]
+      );
+      delivery = deliveryResult.rows[0] || null;
+    }
+    console.log('DEBUG: /user/session delivery:', delivery);
+
+    // Get neonate info for this delivery
+    let neonates = [];
+    if (delivery) {
+      const neonateResult = await pool.query(
+        'SELECT * FROM neonate WHERE delivery_id = $1', [delivery.id]
+      );
+      neonates = neonateResult.rows;
+    }
+    console.log('DEBUG: /user/session neonates:', neonates);
+
+    // Get postnatal visits for this delivery
+    let postnatalVisits = [];
+    if (delivery) {
+      const postnatalResult = await pool.query(
+        'SELECT * FROM postnatal_visit WHERE delivery_id = $1', [delivery.id]
+      );
+      postnatalVisits = postnatalResult.rows;
+    }
+    console.log('DEBUG: /user/session postnatalVisits:', postnatalVisits);
+
+    const decisionSupportAlerts = pregnancy ? generateDecisionSupportAlerts(pregnancy, ancVisits) : [];
+
+    res.json({
+      patient,
+      pregnancy,
+      ancVisits,
+      delivery,
+      neonates,
+      postnatalVisits,
+      decisionSupportAlerts
+    });
+  } catch (err) {
+    console.error('JWT verification error:', err);
+    return res.status(401).json({ error: 'Invalid token' });
+  }
+});
+
 // 2. FHIR catch-all (must come after!)
 app.use('/:resourceType', (req, res, next) => {
   next(); // No authentication required for any resourceType
@@ -489,99 +583,7 @@ app.delete('/:resourceType/:id', async (req, res) => {
   res.status(204).send();
 });
 
-// Get user session/profile endpoint
-app.get('/user/session', async (req, res) => {
-  console.log('DEBUG: /user/session - Starting endpoint');
-  
-  // Extract user ID from JWT token in Authorization header
-  const authHeader = req.headers['authorization'];
-  console.log('DEBUG: /user/session - authHeader:', authHeader);
-  
-  const token = authHeader && authHeader.split(' ')[1];
-  console.log('DEBUG: /user/session - token:', token ? 'present' : 'missing');
-  
-  if (!token) {
-    console.log('DEBUG: /user/session - No token provided');
-    return res.status(401).json({ error: 'No token provided' });
-  }
 
-  try {
-    const decoded = jwt.verify(token, SECRET_KEY);
-    const userId = decoded.id;
-    console.log('DEBUG: /user/session userId:', userId);
-    console.log('DEBUG: /user/session decoded token:', decoded);
-
-    // Get patient info
-    const patientResult = await pool.query('SELECT * FROM patient WHERE id = $1', [userId]);
-    console.log('DEBUG: /user/session patientResult:', patientResult.rows);
-    console.log('DEBUG: /user/session patientResult.rowCount:', patientResult.rowCount);
-
-    if (patientResult.rows.length === 0) return res.status(404).json({ error: 'User not found' });
-    const patient = patientResult.rows[0];
-
-  // Get current pregnancy (latest by edd)
-  const pregnancyResult = await pool.query(
-    'SELECT * FROM pregnancy WHERE patient_id = $1 ORDER BY edd DESC LIMIT 1', [userId]
-  );
-  const pregnancy = pregnancyResult.rows[0] || null;
-  console.log('DEBUG: /user/session pregnancy:', pregnancy);
-
-  // Get all ANC visits for this patient (for the current pregnancy)
-  let ancVisits = [];
-  if (pregnancy) {
-    const ancResult = await pool.query(
-      'SELECT * FROM anc_visit WHERE patient_id = $1 ORDER BY visit_number ASC', [userId]
-    );
-    ancVisits = ancResult.rows;
-  }
-  console.log('DEBUG: /user/session ancVisits:', ancVisits);
-
-  // Get delivery info for this pregnancy
-  let delivery = null;
-  if (pregnancy) {
-    const deliveryResult = await pool.query(
-      'SELECT * FROM delivery WHERE pregnancy_id = $1', [pregnancy.id]
-    );
-    delivery = deliveryResult.rows[0] || null;
-  }
-  console.log('DEBUG: /user/session delivery:', delivery);
-
-  // Get neonate info for this delivery
-  let neonates = [];
-  if (delivery) {
-    const neonateResult = await pool.query(
-      'SELECT * FROM neonate WHERE delivery_id = $1', [delivery.id]
-    );
-    neonates = neonateResult.rows;
-  }
-  console.log('DEBUG: /user/session neonates:', neonates);
-
-  // Get postnatal visits for this delivery
-  let postnatalVisits = [];
-  if (delivery) {
-    const postnatalResult = await pool.query(
-      'SELECT * FROM postnatal_visit WHERE delivery_id = $1', [delivery.id]
-    );
-    postnatalVisits = postnatalResult.rows;
-  }
-  console.log('DEBUG: /user/session postnatalVisits:', postnatalVisits);
-
-  const decisionSupportAlerts = pregnancy ? generateDecisionSupportAlerts(pregnancy, ancVisits) : [];
-
-  res.json({
-    patient,
-    pregnancy,
-    ancVisits,
-    delivery,
-    neonates,
-    postnatalVisits,
-    decisionSupportAlerts
-  });
-  } catch (err) {
-    console.error('JWT verification error:', err);
-    return res.status(401).json({ error: 'Invalid token' });
-  }
-});
 
 // Get all messages for a chat
 app.get('/chat/:chatId/messages', async (req, res) => {
