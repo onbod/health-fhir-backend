@@ -491,11 +491,17 @@ app.delete('/:resourceType/:id', async (req, res) => {
 
 // Get user session/profile endpoint
 app.get('/user/session', async (req, res) => {
+  console.log('DEBUG: /user/session - Starting endpoint');
+  
   // Extract user ID from JWT token in Authorization header
   const authHeader = req.headers['authorization'];
+  console.log('DEBUG: /user/session - authHeader:', authHeader);
+  
   const token = authHeader && authHeader.split(' ')[1];
+  console.log('DEBUG: /user/session - token:', token ? 'present' : 'missing');
   
   if (!token) {
+    console.log('DEBUG: /user/session - No token provided');
     return res.status(401).json({ error: 'No token provided' });
   }
 
