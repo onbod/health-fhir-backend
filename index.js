@@ -491,15 +491,25 @@ app.delete('/:resourceType/:id', async (req, res) => {
 
 // Get user session/profile endpoint
 app.get('/user/session', async (req, res) => {
-  const userId = req.user.id;
-  console.log('DEBUG: /user/session userId:', userId);
+  // Extract user ID from JWT token in Authorization header
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+  
+  if (!token) {
+    return res.status(401).json({ error: 'No token provided' });
+  }
 
-  // Get patient info
-  const patientResult = await pool.query('SELECT * FROM patient WHERE id = $1', [userId]);
-  console.log('DEBUG: /user/session patientResult:', patientResult.rows);
+  try {
+    const decoded = jwt.verify(token, SECRET_KEY);
+    const userId = decoded.id;
+    console.log('DEBUG: /user/session userId:', userId);
 
-  if (patientResult.rows.length === 0) return res.status(404).json({ error: 'User not found' });
-  const patient = patientResult.rows[0];
+    // Get patient info
+    const patientResult = await pool.query('SELECT * FROM patient WHERE id = $1', [userId]);
+    console.log('DEBUG: /user/session patientResult:', patientResult.rows);
+
+    if (patientResult.rows.length === 0) return res.status(404).json({ error: 'User not found' });
+    const patient = patientResult.rows[0];
 
   // Get current pregnancy (latest by edd)
   const pregnancyResult = await pool.query(
@@ -559,6 +569,10 @@ app.get('/user/session', async (req, res) => {
     postnatalVisits,
     decisionSupportAlerts
   });
+  } catch (err) {
+    console.error('JWT verification error:', err);
+    return res.status(401).json({ error: 'Invalid token' });
+  }
 });
 
 // Get all messages for a chat
