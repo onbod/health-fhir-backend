@@ -503,10 +503,12 @@ app.get('/user/session', async (req, res) => {
     const decoded = jwt.verify(token, SECRET_KEY);
     const userId = decoded.id;
     console.log('DEBUG: /user/session userId:', userId);
+    console.log('DEBUG: /user/session decoded token:', decoded);
 
     // Get patient info
     const patientResult = await pool.query('SELECT * FROM patient WHERE id = $1', [userId]);
     console.log('DEBUG: /user/session patientResult:', patientResult.rows);
+    console.log('DEBUG: /user/session patientResult.rowCount:', patientResult.rowCount);
 
     if (patientResult.rows.length === 0) return res.status(404).json({ error: 'User not found' });
     const patient = patientResult.rows[0];
@@ -611,7 +613,7 @@ app.listen(3000, () => {
 });
 
 app.get('/test-patients', async (req, res) => {
-  const result = await pool.query('SELECT id FROM patient');
+  const result = await pool.query('SELECT id, client_number, name FROM patient');
   console.log('DEBUG: all patient ids:', result.rows);
   res.json(result.rows);
 });
