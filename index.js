@@ -17,8 +17,22 @@ const app = express();
 app.use(bodyParser.json());
 
 // ✅ Allow frontend to connect
+const allowedOrigins = [
+  'http://localhost:3000',
+  'http://localhost:3001',
+  'https://your-production-frontend.com'
+];
+
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3001',
+  origin: function (origin, callback) {
+    // allow requests with no origin (like mobile apps, curl, etc.)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    } else {
+      return callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true
 }));
 
@@ -494,6 +508,17 @@ app.get('/fhir/:resourceType', async (req, res) => {
     entry: result.rows.map(row => ({ resource: row.data }))
   });
 });
+app.get('/fhir/:resourceType/:id', async (req, res) => {
+  const { resourceType, id } = req.params;
+  const result = await pool.query(
+    'SELECT data FROM fhir_resources WHERE resource_type = $1 AND resource_id = $2',
+    [resourceType, id]
+  );
+  if (result.rows.length === 0) {
+    return res.status(404).json({ error: 'Resource not found' });
+  }
+  res.json(result.rows[0].data);
+});
 app.get('/metadata', (req, res) => {
   const capabilityStatement = {
     resourceType: "CapabilityStatement",
@@ -695,3 +720,123 @@ app.get('/admin/patient/:id/full', async (req, res) => {
 // ✅ Start Server
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`FHIR server running on port ${PORT}`));
+
+app.get('/pregnancy', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM pregnancy');
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error fetching pregnancy:', err);
+    res.status(500).json({ error: 'Failed to fetch pregnancy data' });
+  }
+});
+
+app.get('/anc_visit/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await pool.query('SELECT * FROM anc_visit WHERE id = $1', [id]);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Not found' });
+    }
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error fetching anc_visit:', err);
+    res.status(500).json({ error: 'Failed to fetch anc_visit data' });
+  }
+});
+
+app.get('/anc_visits/patient/:patientId', async (req, res) => {
+  try {
+    const { patientId } = req.params;
+    const result = await pool.query('SELECT * FROM anc_visit WHERE patient_id = $1', [patientId]);
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error fetching anc visits:', err);
+    res.status(500).json({ error: 'Failed to fetch anc visits' });
+  }
+});
+
+app.get('/delivery', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM delivery');
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error fetching delivery:', err);
+    res.status(500).json({ error: 'Failed to fetch delivery data' });
+  }
+});
+
+app.get('/neonate', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM neonate');
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error fetching neonate:', err);
+    res.status(500).json({ error: 'Failed to fetch neonate data' });
+  }
+});
+
+app.get('/postnatal_visit', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM postnatal_visit');
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error fetching postnatal_visit:', err);
+    res.status(500).json({ error: 'Failed to fetch postnatal_visit data' });
+  }
+});
+
+app.get('/patient', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM patient');
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error fetching patient:', err);
+    res.status(500).json({ error: 'Failed to fetch patient data' });
+  }
+});
+
+app.get('/admin', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM admin');
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error fetching admin:', err);
+    res.status(500).json({ error: 'Failed to fetch admin data' });
+  }
+});
+
+app.get('/report', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM report');
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error fetching report:', err);
+    res.status(500).json({ error: 'Failed to fetch report data' });
+  }
+});
+
+app.get('/chat_message', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM chat_message');
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error fetching chat_message:', err);
+    res.status(500).json({ error: 'Failed to fetch chat_message data' });
+  }
+});
+
+app.get('/api/anc_visit', async (req, res) => {
+  const result = await pool.query('SELECT * FROM anc_visit');
+  res.json(result.rows);
+});
+
+app.get('/api/postnatal_visit', async (req, res) => {
+  const result = await pool.query('SELECT * FROM postnatal_visit');
+  res.json(result.rows);
+});
+
+app.get('/api/delivery', async (req, res) => {
+  const result = await pool.query('SELECT * FROM delivery');
+  res.json(result.rows);
+});
